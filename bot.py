@@ -318,6 +318,34 @@ def get_development_emoji(complexity):
 # СЦЕНАРИИ ЧАТ-БОТА
 ASK_QUESTION, PROCESS_ANSWER, FIX_TRANSLATION, SELECT_DIFFICULTY = range(4)
 
+# Новый обработчик команды /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    nickname = transliterate_to_georgian(user.first_name).strip() or "ბიჭო"
+    
+    welcome_text = (
+        f"გამარჯობა, {escape_markdown(nickname, version=2)}\\! 👋\n"
+        "როგორ ხარ\\?\n\n"
+        "Добро пожаловать в бот\\! Выполняй задания и улучшай свой уровень грузинского\\.\n\n"
+        "\\/setting настройка сложности\n"
+        "\\/fix корректировка перевода\n"
+        "\\/task следующее задание\n"
+    )
+    keyboard = [
+        [InlineKeyboardButton("⏩ შემდეგი", callback_data='next')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=welcome_text,
+        reply_markup=reply_markup,
+        parse_mode="MarkdownV2"
+    )
+    return ASK_QUESTION
+
+
+
 # Обработки команды /task
 async def task_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     chat_id = update.effective_chat.id
@@ -633,26 +661,28 @@ async def handle_extra_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Установка уровня сложности
 async def set_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
-#         [InlineKeyboardButton("Только слова 1", callback_data='difficulty_simple1')],
-#         [InlineKeyboardButton("Только слова 2", callback_data='difficulty_simple2')],
-#         [InlineKeyboardButton("Только слова 3", callback_data='difficulty_simple3')],
-        [InlineKeyboardButton("1️⃣ იოლი", callback_data='difficulty_easy')],
-        [InlineKeyboardButton("2️⃣ საშუალო", callback_data='difficulty_medium')],
-        [InlineKeyboardButton("3️⃣ რთული", callback_data='difficulty_hard')]
+        [
+            InlineKeyboardButton("1️⃣ easy", callback_data='difficulty_easy'),
+            InlineKeyboardButton("2️⃣ medium", callback_data='difficulty_medium'),
+            InlineKeyboardButton("3️⃣ hard", callback_data='difficulty_hard')
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = (
-        "Выберите уровень сложности:\n"
-        "1️⃣ настоящее время и инфинитив\n"
-        "2️⃣ настоящее, прошедшее, будущее, оптатив\n"
-        "3️⃣ все времена\n"   
+        "🕹️ აირჩიე რამდენი რთული გსურს\n\n"
+        "Самое сложное в грузинском \\- это глаголы\\. Выбери\\, что уже знаешь\\.\n\n"
+        "*1\\.* только настоящее время\n"
+        "*2\\.* все основные времена\n"
+        "*3\\.* вообще всё\n\n"   
     )
     
-    await update.message.reply_text(text, reply_markup=reply_markup)
-    
+    await update.message.reply_text(
+        text, 
+        reply_markup=reply_markup,
+        parse_mode="MarkdownV2"
+    )
+
     # Сохраняем предыдущее состояние, чтобы вернуться к нему позже
-    context.user_data['previous_state'] = context.user_data.get('current_state', ASK_QUESTION)
-    context.user_data['current_state'] = SELECT_DIFFICULTY
     return SELECT_DIFFICULTY
 
 async def difficulty_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -667,16 +697,25 @@ async def difficulty_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data['level'] = difficulty
     update_user_complexity(user_id, level = difficulty)
     
-    # Отправляем подтверждение пользователю
+    keyboard = [
+        [InlineKeyboardButton("⏩ შემდეგი", callback_data='next')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    message = (
+        f"✅ Уровень сложности успешно установлен на\\: *{difficulty}*\n"
+    )
+
     await query.edit_message_text(
-        f"Уровень сложности установлен на: *{difficulty}*",
-        parse_mode="Markdown"
+        text=message,
+        reply_markup=reply_markup,
+        parse_mode="MarkdownV2"
     )
     
     # Возвращаемся в предыдущее состояние
-    previous_state = context.user_data.get('previous_state', ASK_QUESTION)
-    context.user_data['current_state'] = previous_state
-    return previous_state
+    # previous_state = context.user_data.get('previous_state', ASK_QUESTION)
+    # context.user_data['current_state'] = previous_state
+    return ASK_QUESTION
 
 
 # Статистика за последнюю неделю
@@ -1166,7 +1205,11 @@ app.job_queue.run_repeating(send_reminders, interval=24*60*60, first=60*60)
     
 # Настройка ConversationHandler
 conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("task", task_start), CallbackQueryHandler(task_start, pattern='next')],
+    entry_points=[
+        CommandHandler("start", start),  # Добавляем обработчик /start
+        CommandHandler("task", task_start), 
+        CallbackQueryHandler(task_start, pattern='next')
+    ],
     states={
         ASK_QUESTION: [
             CommandHandler("setting", set_difficulty),
