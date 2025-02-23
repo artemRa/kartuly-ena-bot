@@ -30,7 +30,6 @@ def get_development_emoji(complexity):
 # СЦЕНАРИИ ЧАТ-БОТА
 ASK_QUESTION, PROCESS_ANSWER, FIX_TRANSLATION, SELECT_DIFFICULTY = range(4)
 
-
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     chat_id = update.effective_chat.id
@@ -57,7 +56,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ASK_QUESTION
 
 
-# Обработки команды /task
+# Обработки команды-кнопки /task
 async def task_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     chat_id = update.effective_chat.id
 
@@ -78,6 +77,7 @@ async def task_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         
     example = get_random_sentence(level, complexity)
     
+    # последовательное снижение сложности при пустом ответе
     if not example:
         while complexity >= 100:
             example = get_random_sentence(level, complexity)
@@ -85,9 +85,10 @@ async def task_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 break
             complexity -= 10
 
+    # не уверен, что это нужно
     if not example:
         await context.bot.send_message(chat_id=chat_id, text="Упс... Что-то сломалось")
-        return ConversationHandler.END
+        return ASK_QUESTION
     
     txt_geo = example[1]
     txt_rus = example[2]
@@ -100,11 +101,11 @@ async def task_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         'gain': 0
     })
 
-    # Дополнительные кнопки
-    keyboard = []
-    keyboard.append([InlineKeyboardButton("🙏 დახმარება", callback_data='help')])
-    keyboard.append([InlineKeyboardButton("⏩ შემდეგი", callback_data='next')])
-
+    # дополнительные кнопки
+    keyboard = [
+        [InlineKeyboardButton("🙏 დახმარება", callback_data='help')],
+        [InlineKeyboardButton("⏩ შემდეგი", callback_data='next')]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     emoji_level = get_development_emoji(complexity)
 
@@ -152,7 +153,7 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         f"თარგმნე ქართულად\n" 
         f">`{escape_markdown(txt_rus, version=2)}`\n•••\n"
         f"📦 {escape_markdown(help_words, version=2)}\n"
-        f"🔑 {help_verb_info}\n❗️*\\-{hp_cost}* წერტილი"
+        f"🔑 {help_verb_info}\n❗️*\\-{hp_cost}* HP"
     )
     
     keyboard = [
@@ -167,19 +168,14 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def get_random_oldstylesmile():
     oldstylesmile_list = [
-        "( ͡° ͜ʖ ͡°)",
         "(▀̿Ĺ̯▀̿ ̿)",
         "ლ(ಠ益ಠლ)",
-        "(◕‿◕)",
         "(‾ʖ̫‾)",
-        "(ʘ‿ʘ)╯",
         "(ಠ_ಠ)",
         "(=◕ᆽ◕=)",
-        "(ᵔᴥᵔ)",
         "(⊙ω⊙)",
-        "( ͡❛ ͜ʖ ͡❛)",
         "(V●ᴥ●V)",
-        "ʕ⁠ಠ⁠_⁠ಠ⁠ʔ"
+        "ʕ⁠ಠ⁠_⁠ಠ⁠ʔ",
         "(ಥ﹏ಥ)",
         "(◕︵◕)",
         "(ಥ_ʖಥ)",
@@ -189,10 +185,8 @@ def get_random_oldstylesmile():
         "༼ つ ಥ_ಥ ༽つ",
         "◉_◉",
         "༼ʘ̚ل͜ʘ̚༽",
-        "ᕦ(ò_óˇ)ᕤ",
         "⚆ _ ⚆"
     ]
-    
     return escape_markdown(random.choice(oldstylesmile_list), version=2) 
 
 
@@ -209,26 +203,24 @@ def get_random_motivation():
         "საუკეთესო ხარ!",
         "ოქრო ხარ!"
         ]
-    
     return escape_markdown(random.choice(motivation_list), version=2) 
 
 
 # Обработка ответа пользователя на /task-answer
 async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    
+    # пользователь отправил текстовый ответ
     if update.message:
-        # Пользователь отправил текстовый ответ
         user_response = update.message.text
         if not user_response:
             await update.message.reply_text("Не удалось прочитать ваш ответ, попробуйте еще раз.")
             return ASK_QUESTION
         compare_answers = True
         message = update.message
+    # пользователь нажал на кнопку "Не знаю"
     elif update.callback_query:
-        # Пользователь нажал на кнопку "Не знаю"
         query = update.callback_query
         await query.answer()
-        user_response = ''  # Пользователь не предоставил ответ
+        user_response = ''
         compare_answers = False
         message = query.message
     else:
@@ -241,57 +233,57 @@ async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = user.id
     start_txt = ""
     
+    # сравнение ответа с эталоном и подсчет баллов
     if compare_answers:
-        # Выполняем сравнение ответов
         gain, missing_words, extra_words = comparison_of_texts(txt_geo, user_response)
-        gain = max(0, gain + gain0)
+        gain = max(0, gain + gain0) # балы с учётом подсказки
         add_user_total_score(user_id, gain)
         txt_geo2 = underline_words_in_text(escape_markdown(txt_geo, version=2), missing_words)
         
         smile_type = '🔥' if gain > 5 else '💔'
-        gain_txt = f"{smile_type} *\\{gain}*\\/10"
+        mult = -50 if gain <= 3 else gain * 5 if gain > 5 else 0
+        mult = 100 if gain == 10 else mult # супер-приз за идеальный ответ
+        rating = f" 🔺\\{mult:+d}" if mult > 0 else f" 🔻\\{mult:+d}" if mult < 0 else ""
+
+        gain_txt = f"{smile_type} *\\{gain}*\\/10" + rating
         start_txt = f"{get_random_motivation()} " if gain > 5 else ""
         
-        mult = -50 if gain <= 3 else gain * 5 if gain > 7 else 0
-        
+    # сценарий для ответа "не знаю"
     else:
-        # Пропускаем сравнение ответов
-#         gain = gain0  # Без дополнительного заработка
         txt_geo2 = escape_markdown(txt_geo, version=2)
-        gain = gain0
+        gain, mult = 0, 0
         gain_txt = get_random_oldstylesmile()
-        mult = -25
     
     complexity0 = context.user_data.get('complexity')
     
-    # Заплатка на случай обнуления памяти
+    # заплатка на случай обнуления памяти
     if complexity0 is None:
         complexity_from_bd = get_user_complexity(user_id)
         if complexity_from_bd:
             complexity0 = complexity_from_bd[1]
         else:
             complexity0 = 100
-            
+
+    # корректировка сложности       
     complexity1 = min(max(complexity0 + mult, 100), 1000)
-    
     if complexity1 != complexity0:
         context.user_data['complexity'] = complexity1
         update_user_complexity(user_id, complexity = complexity1)
     
+    # итоговый сбор сообщения
     keyboard = [
-#         [InlineKeyboardButton("❌ საკმარისია", callback_data='stop')],
         [InlineKeyboardButton("📖 ლექსიკონი", callback_data='dictionary')],
         [InlineKeyboardButton("⏩ შემდეგი", callback_data='next')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    result = f"{start_txt}სწორი პასუხი\n>{txt_geo2}\n{gain_txt}"
+    await message.reply_text(
+        result, 
+        reply_markup=reply_markup, 
+        parse_mode="MarkdownV2"
+    )
 
-    
-    result = f"{start_txt}აი სწორი პასუხი\n>{txt_geo2}\n{gain_txt}"
-
-    
-    await message.reply_text(result, reply_markup=reply_markup, parse_mode="MarkdownV2")
-
-    # Поощрение для удачного результата
+    # счастливый стикер для удачного результата
     if gain >= 8:
         await update.message.reply_sticker(sticker=random.choice(happy_sticker_list))
 
@@ -304,7 +296,7 @@ async def ask_extra_question(update: Update, context: ContextTypes.DEFAULT_TYPE)
     txt_rus = context.user_data.get('txt_rus', 'Упс... что-то сломалось')
     txt_geo = context.user_data.get('txt_geo', 'N/A')
     message = (
-        "📚 Перевод неточный\\? Напишите правильный\\*\n"
+        "📚 Перевод неточный\\? Напишите правильный\n"
         f">`{escape_markdown(txt_geo, version=2)}`\n"
         f">`{escape_markdown(txt_rus, version=2)}`"
     )
@@ -378,7 +370,7 @@ async def set_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "Самое сложное в грузинском \\- это глаголы\\. Выбери\\, что уже знаешь\\.\n\n"
         "*1\\.* только настоящее время\n"
         "*2\\.* все основные времена\n"
-        "*3\\.* вообще всё\n\n"   
+        "*3\\.* знаю вообще всё\n\n"   
     )
     
     await update.message.reply_text(
@@ -526,18 +518,18 @@ async def show_word_meaning(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         if "V" in verb:
             verb_forms = generate_verb_text(wid, verb)
             verb_forms_full = f"*{verb_rus}*\n🇬🇪 {verb_geo}\n\n{verb_forms}"
-            verb_forms_full = f"\n{wrap_in_quote(verb_forms_full)}"
+            verb_forms_full = f"\n{wrap_in_quote(verb_forms_full)}\n"
         
         text = (
             f"*💬 {escape_markdown(word, version=2)} • {escape_markdown(rus, version=2)}*\n"
             + format_variable(desc, "{var}\n")
             + "\n"
-            + format_variable(pos, "ℹ️ {var}\n")
-            + format_variable(forms, "♻️ {var}\n")
+            + format_variable(pos, "👁️‍🗨️ {var}\n")
+            + format_variable(forms, "🔝 {var}\n")
+            + verb_forms_full
             + "\n"
             + format_variable(link1, "🔗 {var}\n")
             + format_variable(link2, "🔗 {var}\n")
-            + verb_forms_full
         )
         
     else:
@@ -689,7 +681,6 @@ async def receive_new_rus_desc(update: Update, context: ContextTypes.DEFAULT_TYP
 async def retry_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    # Перезапуск процесса, вызвав команду /task заново
     return await task_start(update, context)
 
 
@@ -729,7 +720,6 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE):
         SELECT user_id
         , CAST(min(julianday('now') - julianday(timestamp)) as INTEGER) as days
         FROM user_scores
-        --WHERE user_id = 156855338
         GROUP BY user_id
         '''
         cursor.execute(query) 
@@ -768,8 +758,9 @@ app.job_queue.run_repeating(send_reminders, interval=24*60*60, first=60*60)
     
 # Настройка ConversationHandler
 conv_handler = ConversationHandler(
+    # запуск бота через команду start, task или кнопку next
     entry_points=[
-        CommandHandler("start", start),  # Добавляем обработчик /start
+        CommandHandler("start", start),
         CommandHandler("task", task_start), 
         CallbackQueryHandler(task_start, pattern='next')
     ],
@@ -817,9 +808,6 @@ conv_handler = ConversationHandler(
 
 # Добавление ConversationHandler в приложение
 app.add_handler(conv_handler, group=1)
-
-# Регистрация глобального обработчика для кнопки "Next"
-# app.add_handler(CallbackQueryHandler(retry_task, pattern='next'))
 
 # Запуск бота
 app.run_polling()

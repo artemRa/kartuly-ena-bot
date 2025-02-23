@@ -61,7 +61,7 @@ def comparison_of_texts(txt1, txt2):
     score = round(jaccard * 10)
     
     # Смягчение логики
-    if len(processed_words1) > 5:
+    if len(processed_words1) > 5 and len(intersection) > 0:
         score = max(score, 10 - len(unique_words))
     
     return score, unique_words, extra_words
