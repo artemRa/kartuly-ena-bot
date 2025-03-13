@@ -5,6 +5,7 @@ from telegram.helpers import escape_markdown
 import json
 import random
 import re
+import math
 from config import TOKEN, DB_PATH
 from utils.transliteration import transliterate_to_georgian
 from utils.text_processing import comparison_of_texts, underline_words_in_text, format_variable, wrap_in_quote
@@ -232,28 +233,7 @@ async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user = update.effective_user
     user_id = user.id
     start_txt = ""
-    
-    # сравнение ответа с эталоном и подсчет баллов
-    if compare_answers:
-        gain, missing_words, extra_words = comparison_of_texts(txt_geo, user_response)
-        gain = max(0, gain + gain0) # балы с учётом подсказки
-        add_user_total_score(user_id, gain)
-        txt_geo2 = underline_words_in_text(escape_markdown(txt_geo, version=2), missing_words)
-        
-        smile_type = '🔥' if gain > 5 else '💔'
-        mult = -50 if gain <= 3 else gain * 5 if gain > 5 else 0
-        mult = 100 if gain == 10 else mult # супер-приз за идеальный ответ
-        rating = f" 🔺\\{mult:+d}" if mult > 0 else f" 🔻\\{mult:+d}" if mult < 0 else ""
 
-        gain_txt = f"{smile_type} *\\{gain}*\\/10" + rating
-        start_txt = f"{get_random_motivation()} " if gain > 5 else ""
-        
-    # сценарий для ответа "не знаю"
-    else:
-        txt_geo2 = escape_markdown(txt_geo, version=2)
-        gain, mult = 0, 0
-        gain_txt = get_random_oldstylesmile()
-    
     complexity0 = context.user_data.get('complexity')
     
     # заплатка на случай обнуления памяти
@@ -263,6 +243,29 @@ async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             complexity0 = complexity_from_bd[1]
         else:
             complexity0 = 100
+
+    # сравнение ответа с эталоном и подсчет баллов
+    if compare_answers:
+        gain, missing_words, extra_words = comparison_of_texts(txt_geo, user_response)
+        gain = max(0, gain + gain0) # балы с учётом подсказки
+        add_user_total_score(user_id, gain)
+        txt_geo2 = underline_words_in_text(escape_markdown(txt_geo, version=2), missing_words)
+        
+        smile_type = '🔥' if gain > 5 else '💔'
+        mult = -50 if gain < 5 else gain * 5 if gain > 7 else 0
+        mult = 100 if gain == 10 else mult # супер-приз за идеальный ответ
+        mult = max(1, round(mult * math.exp(-0.001 * (complexity0 - 100)))) # экспоненциальная корректировка
+        rating = f" 🔺\\{mult:+d}" if mult > 0 else f" 🔻\\{mult:+d}" if mult < 0 else ""
+
+        gain_txt = f"{smile_type} *\\{gain}*\\/10" + rating
+        start_txt = f"{get_random_motivation()} " if gain > 5 else ""
+        
+    # сценарий для ответа "не знаю"
+    else:
+        txt_geo2 = escape_markdown(txt_geo, version=2)
+        gain, mult = 0, -10
+        gain_txt = get_random_oldstylesmile() + f" 🔻\\{mult:+d}"
+    
 
     # корректировка сложности       
     complexity1 = min(max(complexity0 + mult, 100), 1000)
