@@ -27,6 +27,10 @@ def get_development_emoji(complexity):
             return emoji
     return emojis[-1]
 
+# Экспоненциальный нормализатор рейтинга
+def exp_rating_normalizer(value, complexity, alpha=0.001):
+    norm_value = max(1, round(abs(value) * math.exp(-alpha * (complexity - 100))))
+    return int(math.copysign(norm_value, value))
 
 # СЦЕНАРИИ ЧАТ-БОТА
 ASK_QUESTION, PROCESS_ANSWER, FIX_TRANSLATION, SELECT_DIFFICULTY = range(4)
@@ -251,10 +255,10 @@ async def process_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         add_user_total_score(user_id, gain)
         txt_geo2 = underline_words_in_text(escape_markdown(txt_geo, version=2), missing_words)
         
-        smile_type = '🔥' if gain > 5 else '💔'
+        smile_type = '🔥' if gain > 4 else '💔'
         mult = -50 if gain < 5 else gain * 5 if gain > 7 else 0
         mult = 100 if gain == 10 else mult # супер-приз за идеальный ответ
-        mult = max(1, round(mult * math.exp(-0.001 * (complexity0 - 100)))) # экспоненциальная корректировка
+        mult = exp_rating_normalizer(mult, complexity0) # экспоненциальная корректировка
         rating = f" 🔺\\{mult:+d}" if mult > 0 else f" 🔻\\{mult:+d}" if mult < 0 else ""
 
         gain_txt = f"{smile_type} *\\{gain}*\\/10" + rating
